@@ -75,7 +75,7 @@ graph TB
     A[展望DBF檔案] --> B[DBF解析器]
     B --> C[SQLite資料庫]
     C --> D[LLM查詢代理]
-    D --> E[Gemma-3n模型]
+    D --> E[Llama3:8b模型]
     D --> F[Streamlit界面]
     F --> G[資料視覺化]
     
