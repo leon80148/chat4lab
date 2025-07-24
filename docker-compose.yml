@@ -1,0 +1,90 @@
+version: '3.8'
+
+services:
+  # Ollama LLM 服務
+  ollama:
+    image: ollama/ollama:latest
+    container_name: clinic-ai-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+      - ./models:/models
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+      - OLLAMA_KEEP_ALIVE=24h
+    command: serve
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+    networks:
+      - clinic-ai-network
+
+  # 診所AI查詢系統主應用
+  clinic-ai:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: clinic-ai-app
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./data:/app/data:ro
+      - ./logs:/app/logs
+      - ./config:/app/config:ro
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - DATABASE_PATH=/app/data/anchia_lab.db
+      - LOG_LEVEL=INFO
+      - PYTHONPATH=/app
+      - STREAMLIT_SERVER_PORT=8501
+      - STREAMLIT_SERVER_ADDRESS=0.0.0.0
+    depends_on:
+      ollama:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+    restart: unless-stopped
+    networks:
+      - clinic-ai-network
+
+  # 模型載入器 (初次設置時使用)
+  model-loader:
+    image: ollama/ollama:latest
+    container_name: clinic-ai-model-loader
+    depends_on:
+      ollama:
+        condition: service_healthy
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+    command: >
+      bash -c "
+        echo '📥 載入 Gemma2 模型 (約5.4GB)...' &&
+        ollama pull gemma2:9b-instruct-q4_0 &&
+        echo '✅ 模型載入完成!' &&
+        ollama list
+      "
+    profiles:
+      - setup
+    networks:
+      - clinic-ai-network
+
+volumes:
+  ollama_data:
+    driver: local
+    name: clinic-ai-ollama-data
+
+networks:
+  clinic-ai-network:
+    driver: bridge
+    name: clinic-ai-network

@@ -1,0 +1,182 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  # 代碼品質檢查
+  code-quality:
+    runs-on: ubuntu-latest
+    name: 代碼品質檢查
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+          
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install black flake8 mypy isort bandit safety
+        pip install -r requirements.txt
+        
+    - name: Run Black (代碼格式檢查)
+      run: black --check --diff src/ tests/
+      
+    - name: Run Flake8 (代碼風格檢查)  
+      run: flake8 src/ tests/ --max-line-length=88 --extend-ignore=E203,W503
+      
+    - name: Run isort (import排序檢查)
+      run: isort --check-only --diff src/ tests/
+      
+    - name: Run MyPy (類型檢查)
+      run: mypy src/ --ignore-missing-imports
+      
+    - name: Run Bandit (安全檢查)
+      run: bandit -r src/ -f json -o bandit-report.json || true
+      
+    - name: Run Safety (依賴漏洞檢查)
+      run: safety check --json --output safety-report.json || true
+
+  # 單元測試
+  test:
+    runs-on: ubuntu-latest
+    name: 單元測試
+    needs: code-quality
+    
+    strategy:
+      matrix:
+        python-version: ['3.9', '3.10', '3.11']
+        
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+        
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('**/requirements.txt') }}
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Create test directories
+      run: mkdir -p data logs config
+      
+    - name: Run tests with coverage
+      run: |
+        pytest tests/ \
+          --cov=src \
+          --cov-report=xml \
+          --cov-report=html \
+          --cov-report=term-missing \
+          --cov-fail-under=70 \
+          -v
+          
+    - name: Upload coverage to Codecov
+      if: matrix.python-version == '3.11'
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+
+  # Docker構建測試
+  docker-build:
+    runs-on: ubuntu-latest
+    name: Docker構建測試
+    needs: test
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      
+    - name: Build Docker image
+      run: |
+        docker build -t clinic-ai-query:test .
+        
+    - name: Test Docker image
+      run: |
+        # 創建測試用的目錄和檔案
+        mkdir -p data logs config
+        echo "test_data" > data/test.txt
+        
+        # 啟動容器進行基本測試
+        docker run --rm -d \
+          --name clinic-ai-test \
+          -p 8501:8501 \
+          -v $(pwd)/data:/app/data:ro \
+          -v $(pwd)/logs:/app/logs \
+          -v $(pwd)/config:/app/config:ro \
+          -e DATABASE_PATH=/app/data/test.db \
+          clinic-ai-query:test
+          
+        # 等待容器啟動
+        sleep 30
+        
+        # 檢查健康狀態 (如果有健康檢查端點的話)
+        # curl -f http://localhost:8501/healthz || echo "Health check not available yet"
+        
+        # 停止容器
+        docker stop clinic-ai-test
+
+  # 依賴檢查
+  dependency-check:
+    runs-on: ubuntu-latest
+    name: 依賴安全檢查
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install safety pip-audit
+        
+    - name: Run pip-audit
+      run: pip-audit --requirement requirements.txt --format=json --output=pip-audit.json || true
+      
+    - name: Upload security reports
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: security-reports
+        path: |
+          bandit-report.json
+          safety-report.json
+          pip-audit.json

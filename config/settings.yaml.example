@@ -1,0 +1,238 @@
+# 診所AI查詢系統配置檔案範例
+# 複製此檔案為 settings.yaml 並修改相應的設定值
+
+# ===================
+# 系統基本設定
+# ===================
+system:
+  name: "診所AI查詢系統"
+  version: "1.0.0"
+  author: "Leon Lu"
+  license: "MIT"
+  repository: "https://github.com/leon80148/chat4lab"
+
+# ===================
+# 資料庫設定
+# ===================
+database:
+  type: "sqlite"
+  path: "./data/anchia_lab.db"
+  encoding: "big5"
+  
+  # 展望系統DBF檔案配置
+  tables:
+    CO01M:
+      description: "病患主資料表"
+      primary_key: "kcstmr"
+      file_path: "./data/dbf_files/CO01M.dbf"
+    CO02M:
+      description: "處方記錄檔"
+      primary_key: ["kcstmr", "idate", "itime", "dno"]
+      file_path: "./data/dbf_files/CO02M.dbf"
+    CO03M:
+      description: "就診摘要檔"
+      primary_key: ["kcstmr", "idate", "itime"]
+      file_path: "./data/dbf_files/CO03M.dbf"
+    CO18H:
+      description: "檢驗結果歷史檔"
+      primary_key: ["kcstmr", "hdate", "htime", "hitem"]
+      file_path: "./data/dbf_files/CO18H.dbf"
+  
+  # SQLite效能調優
+  performance:
+    journal_mode: "WAL"
+    synchronous: "NORMAL"
+    cache_size: 10000      # 40MB快取
+    temp_store: "MEMORY"
+    mmap_size: 268435456   # 256MB記憶體映射
+    
+  # 備份設定
+  backup:
+    enabled: true
+    path: "./data/backups/"
+    schedule: "daily"      # daily, weekly, monthly
+    keep_days: 30
+
+# ===================
+# LLM設定
+# ===================
+llm:
+  provider: "ollama"
+  base_url: "http://localhost:11434"
+  model: "gemma2:9b-instruct-q4_0"
+  
+  # 推論參數
+  parameters:
+    temperature: 0.1       # 創造性 (0.0-1.0)
+    max_tokens: 2048       # 最大回應長度
+    top_p: 0.9            # 核採樣
+    top_k: 40             # Top-K採樣
+    repeat_penalty: 1.1    # 重複懲罰
+    
+  # 提示詞設定
+  prompts:
+    system_file: "config/prompts/system_prompt.txt"
+    examples_file: "config/prompts/sql_examples.txt"
+    medical_terms_file: "config/prompts/medical_terms.yaml"
+    
+  # 逾時設定
+  timeout:
+    connection: 10        # 連線逾時 (秒)
+    inference: 30         # 推論逾時 (秒)
+    
+  # 快取設定
+  cache:
+    enabled: true
+    max_size: 100         # 最大快取項目數
+    ttl: 300             # 快取存活時間 (秒)
+
+# ===================
+# 安全設定
+# ===================
+security:
+  # 認證設定
+  authentication:
+    enabled: true
+    method: "simple"      # simple, ldap, oauth
+    session_timeout: 1800 # 30分鐘
+    max_login_attempts: 3
+    lockout_duration: 300 # 5分鐘
+    
+  # 查詢限制
+  query_limits:
+    max_results: 1000     # 最大查詢結果數
+    max_execution_time: 30 # 最大執行時間 (秒)
+    allowed_operations: ["SELECT"] # 允許的SQL操作
+    
+  # 敏感欄位遮蔽
+  sensitive_fields:
+    - "mpersonid"         # 身分證字號
+    - "mtelh"            # 電話
+    - "mfml"             # 住家電話
+    - "maddr"            # 地址
+    
+  # 審計日誌
+  audit:
+    enabled: true
+    log_queries: true
+    log_results: false    # 不記錄查詢結果 (避免敏感資訊)
+    retention_days: 90
+
+# ===================
+# UI設定
+# ===================
+ui:
+  # 主題設定
+  theme: "light"          # light, dark, auto
+  language: "zh-TW"       # 介面語言
+  
+  # 頁面設定
+  page:
+    title: "診所AI查詢系統"
+    icon: "🏥"
+    layout: "wide"        # centered, wide
+    
+  # 側邊欄設定
+  sidebar:
+    title: "功能選單"
+    expanded: true
+    
+  # 圖表設定
+  charts:
+    theme: "plotly"       # plotly, matplotlib
+    color_scheme: "viridis" # 顏色主題
+    
+  # 查詢介面
+  query:
+    suggestions_count: 5   # 查詢建議數量
+    history_count: 10     # 歷史記錄數量
+    auto_save: true       # 自動儲存查詢
+
+# ===================
+# 日誌設定
+# ===================
+logging:
+  level: "INFO"           # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  file: "./logs/clinic_ai.log"
+  
+  # 日誌格式
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  date_format: "%Y-%m-%d %H:%M:%S"
+  
+  # 日誌輪替
+  rotation:
+    max_size: "10MB"
+    backup_count: 5
+    
+  # 日誌記錄器
+  loggers:
+    dbf_parser: "INFO"
+    db_manager: "INFO"  
+    llm_agent: "INFO"
+    auth: "WARNING"
+    
+  # 外部工具日誌
+  external:
+    streamlit: "WARNING"
+    ollama: "ERROR"
+
+# ===================
+# 開發設定
+# ===================
+development:
+  debug: false
+  reload: false          # 檔案變更時自動重載
+  profiling: false       # 效能分析
+  
+  # 測試設定
+  testing:
+    database: ":memory:"  # 測試用記憶體資料庫
+    mock_llm: false      # 是否模擬LLM回應
+    timeout: 30          # 測試逾時時間
+    
+  # 開發工具
+  tools:
+    enable_debugger: false
+    show_sql_queries: false
+    timing_info: false
+
+# ===================
+# 監控設定  
+# ===================
+monitoring:
+  # 健康檢查
+  health_check:
+    enabled: true
+    endpoint: "/healthz"
+    interval: 30         # 檢查間隔 (秒)
+    
+  # 效能監控
+  performance:
+    track_queries: true
+    track_response_time: true
+    alert_threshold: 10   # 回應時間警告閾值 (秒)
+    
+  # 系統資源監控
+  resources:
+    memory_threshold: 80  # 記憶體使用率警告 (%)
+    disk_threshold: 90    # 磁碟使用率警告 (%)
+
+# ===================
+# 整合設定
+# ===================
+integrations:
+  # 第三方服務
+  external_services:
+    enabled: false
+    
+  # API設定
+  api:
+    enabled: false
+    host: "0.0.0.0"
+    port: 8000
+    cors_origins: ["*"]
+    
+  # 通知設定
+  notifications:
+    enabled: false
+    channels: []          # email, slack, webhook
