@@ -65,9 +65,9 @@ class TestLLMQueryAgent:
         """LLM配置"""
         return {
             'base_url': 'http://localhost:11434',
-            'model': 'gemma2:9b-instruct-q4_0',
+            'model': 'llama3:8b-instruct',
             'parameters': {
-                'temperature': 0.1,
+                'temperature': 0.2,
                 'max_tokens': 2048
             }
         }

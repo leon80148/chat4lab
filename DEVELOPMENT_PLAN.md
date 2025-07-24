@@ -953,7 +953,7 @@ services:
     command: >
       bash -c "
         echo 'Loading Gemma2 model...' &&
-        ollama pull gemma2:9b-instruct-q4_0 &&
+        ollama pull llama3:8b-instruct &&
         echo 'Model loaded successfully' &&
         ollama list
       "
@@ -1197,7 +1197,7 @@ start_services() {
     
     # 下載模型
     log_info "下載 Gemma2 模型 (約5.4GB)..."
-    ollama pull gemma2:9b-instruct-q4_0
+    ollama pull llama3:8b-instruct
     log_success "模型下載完成"
     
     # 初始化資料庫
@@ -1325,7 +1325,7 @@ docker-compose --profile setup up model-loader
 
 2. **模型下載失敗**
    - 檢查網路連線
-   - 重新執行 `ollama pull gemma2:9b-instruct-q4_0`
+   - 重新執行 `ollama pull llama3:8b-instruct`
 
 3. **埠號衝突**
    - 修改 .env 檔案中的 STREAMLIT_SERVER_PORT

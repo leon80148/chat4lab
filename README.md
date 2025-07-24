@@ -9,7 +9,7 @@
 
 ## ✨ 核心特色
 
-- 🤖 **本地LLM部署** - 使用Gemma-3n模型，確保資料不外洩
+- 🤖 **本地LLM部署** - 使用Llama3:8b模型，確保資料不外洩
 - 📊 **展望系統專用** - 專門優化展望診療系統DBF格式
 - 🔍 **自然語言查詢** - 中文自然語言轉SQL查詢
 - 📈 **智能視覺化** - 自動生成醫療統計圖表
@@ -153,7 +153,7 @@ chat4lab/
 ```bash
 # LLM設定
 OLLAMA_BASE_URL=http://localhost:11434
-OLLAMA_MODEL=gemma2:9b-instruct-q4_0
+OLLAMA_MODEL=llama3:8b-instruct
 
 # 資料庫設定
 DATABASE_PATH=./data/anchia_lab.db
@@ -178,6 +178,31 @@ pytest tests/ --cov=src --cov-report=html
 
 # 效能測試
 python tests/performance_test.py
+```
+
+## 🤖 LLM模型選擇
+
+本系統使用 **Llama3:8b-instruct** 作為預設LLM模型，選擇原因：
+
+### 為什麼選擇 Llama3:8b？
+
+| 特性 | Llama3:8b | 其他選擇 |
+|------|-----------|---------|
+| **SQL生成能力** | ⭐⭐⭐⭐⭐ | 業界頂尖的程式碼生成能力 |
+| **中文理解** | ⭐⭐⭐⭐ | 對繁體中文醫療術語支援良好 |
+| **資源需求** | ⭐⭐⭐⭐ | 僅需5GB RAM，適合診所環境 |
+| **推理速度** | ⭐⭐⭐⭐⭐ | 快速回應，提升用戶體驗 |
+| **社群支援** | ⭐⭐⭐⭐⭐ | Meta開源，社群活躍 |
+
+### 更換其他模型
+
+如需使用其他模型，請修改 `.env` 檔案：
+
+```bash
+# 其他可選模型
+OLLAMA_MODEL=gemma2:9b-instruct    # Google Gemma2 (更大模型)
+OLLAMA_MODEL=mistral:7b           # Mistral (歐洲開源)
+OLLAMA_MODEL=codellama:7b         # CodeLlama (程式碼專用)
 ```
 
 ## 📖 文檔

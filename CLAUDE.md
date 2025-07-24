@@ -344,7 +344,7 @@ services:
       - ollama_data:/root/.ollama
     command: >
       bash -c "
-        ollama pull gemma2:9b-instruct-q4_0 &&
+        ollama pull llama3:8b-instruct &&
         echo 'Model loaded successfully'
       "
     profiles:
@@ -430,7 +430,7 @@ fi
 
 # 下載模型
 echo "📥 下載 Gemma-3n 模型 (約5.4GB)..."
-ollama pull gemma2:9b-instruct-q4_0
+ollama pull llama3:8b-instruct
 
 # 初始化資料庫
 echo "🗄️ 初始化資料庫..."
@@ -465,7 +465,7 @@ SECRET_KEY=your-secret-key-here
 
 # LLM設定
 OLLAMA_BASE_URL=http://localhost:11434
-OLLAMA_MODEL=gemma2:9b-instruct-q4_0
+OLLAMA_MODEL=llama3:8b-instruct
 OLLAMA_TIMEOUT=30
 
 # 資料庫設定  
@@ -510,7 +510,7 @@ database:
 
 llm:
   provider: "ollama"
-  model: "gemma2:9b-instruct-q4_0"
+  model: "llama3:8b-instruct"
   temperature: 0.1
   max_tokens: 2048
   system_prompt_file: "config/prompts/system_prompt.txt"

@@ -59,11 +59,11 @@ database:
 llm:
   provider: "ollama"
   base_url: "http://localhost:11434"
-  model: "gemma2:9b-instruct-q4_0"
+  model: "llama3:8b-instruct"
   
   # 推論參數
   parameters:
-    temperature: 0.1       # 創造性 (0.0-1.0)
+    temperature: 0.2       # 創造性 (0.0-1.0) - Llama3優化
     max_tokens: 2048       # 最大回應長度
     top_p: 0.9            # 核採樣
     top_k: 40             # Top-K採樣

@@ -195,7 +195,7 @@ class HealthChecker:
         try:
             config = ConfigManager()
             base_url = config.get('llm.base_url', 'http://localhost:11434')
-            model_name = config.get('llm.model', 'gemma2:9b-instruct-q4_0')
+            model_name = config.get('llm.model', 'llama3:8b-instruct')
             timeout = config.get('llm.timeout.connection', 10)
             
             # 檢查服務是否運行

@@ -69,8 +69,8 @@ services:
       - OLLAMA_HOST=http://ollama:11434
     command: >
       bash -c "
-        echo '📥 載入 Gemma2 模型 (約5.4GB)...' &&
-        ollama pull gemma2:9b-instruct-q4_0 &&
+        echo '📥 載入 Llama3 模型 (約4.7GB)...' &&
+        ollama pull llama3:8b-instruct &&
         echo '✅ 模型載入完成!' &&
         ollama list
       "

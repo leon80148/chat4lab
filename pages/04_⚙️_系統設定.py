@@ -194,7 +194,7 @@ def render_llm_settings(config_manager):
         with col2:
             model = st.text_input(
                 "模型名稱",
-                value=current_config.get('model', 'gemma2:9b-instruct-q4_0'),
+                value=current_config.get('model', 'llama3:8b-instruct'),
                 help="要使用的LLM模型名稱"
             )
         
@@ -207,7 +207,7 @@ def render_llm_settings(config_manager):
                 "溫度參數",
                 min_value=0.0,
                 max_value=2.0,
-                value=current_config.get('parameters', {}).get('temperature', 0.1),
+                value=current_config.get('parameters', {}).get('temperature', 0.2),
                 step=0.1,
                 help="控制輸出的隨機性，越低越確定"
             )

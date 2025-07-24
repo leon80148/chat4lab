@@ -283,18 +283,18 @@ start_ollama_service() {
 }
 
 download_model() {
-    log_step "下載 Gemma2 模型..."
+    log_step "下載 Llama3 模型..."
     
     # 檢查模型是否已存在
-    if ollama list | grep -q "gemma2:9b-instruct-q4_0"; then
+    if ollama list | grep -q "llama3:8b-instruct"; then
         log_info "模型已存在，跳過下載"
         return
     fi
     
-    log_info "開始下載模型 (約5.4GB，可能需要較長時間)..."
+    log_info "開始下載模型 (約4.7GB，可能需要較長時間)..."
     
     # 顯示進度
-    ollama pull gemma2:9b-instruct-q4_0 &
+    ollama pull llama3:8b-instruct &
     local pid=$!
     
     # 簡單的進度指示
@@ -337,7 +337,7 @@ run_health_check() {
     fi
     
     # 檢查模型
-    if ollama list | grep -q "gemma2:9b-instruct-q4_0"; then
+    if ollama list | grep -q "llama3:8b-instruct"; then
         log_success "✓ 模型載入正常"
     else
         log_error "✗ 模型未正確載入"
