@@ -23,7 +23,8 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from src.config import ConfigManager, ConfigError
 from src.modules.db_manager import DatabaseManager, DatabaseError
-from src.modules.llm_agent import LLMQueryAgent, QueryResult
+from src.modules.llm_agent_v2 import ModernLLMQueryAgent as LLMQueryAgent
+from src.modules.sql_models import EnhancedQueryResult as QueryResult
 from src.modules.query_templates import QueryTemplateManager
 
 # 配置日誌

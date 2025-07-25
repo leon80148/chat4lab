@@ -10,10 +10,12 @@ Created: 2025-01-24
 
 import logging
 import os
+import re
 from pathlib import Path
 from typing import Dict, List, Optional, Union, Any
 import pandas as pd
 import simpledbf
+import dbfread
 from datetime import datetime
 
 # 設置日誌
@@ -207,7 +209,7 @@ class ZhanWangDBFParser:
     
     def _parse_dbf_file(self, file_path: Path, table_type: str) -> pd.DataFrame:
         """
-        解析DBF檔案為DataFrame
+        解析DBF檔案為DataFrame (支援多套件fallback)
         
         Args:
             file_path: DBF檔案路徑
@@ -219,28 +221,241 @@ class ZhanWangDBFParser:
         Raises:
             DBFParseError: 解析失敗
         """
+        logger.info(f"開始解析 {table_type} 檔案: {file_path}")
+        
+        # 嘗試多種DBF讀取方法
+        methods = [
+            ("dbfread", self._parse_with_dbfread),
+            ("simpledbf", self._parse_with_simpledbf),
+        ]
+        
+        last_error = None
+        
+        for method_name, method_func in methods:
+            try:
+                logger.debug(f"嘗試使用 {method_name} 解析 {table_type}")
+                df = method_func(file_path)
+                
+                if df is not None and not df.empty:
+                    # 清理欄位名稱 (轉為小寫)
+                    df.columns = df.columns.str.lower()
+                    
+                    # 清理資料
+                    df = self._clean_data(df, table_type)
+                    
+                    logger.info(f"成功使用 {method_name} 解析 {table_type}: {len(df)} 筆記錄")
+                    return df
+                    
+            except Exception as e:
+                logger.warning(f"{method_name} 解析失敗: {e}")
+                last_error = e
+                continue
+        
+        # 所有方法都失敗
+        raise DBFParseError(f"所有DBF解析方法都失敗，最後錯誤: {last_error}")
+    
+    def _parse_with_dbfread(self, file_path: Path) -> pd.DataFrame:
+        """使用dbfread套件解析DBF檔案"""
         try:
-            logger.info(f"開始解析 {table_type} 檔案: {file_path}")
+            # 嘗試不同的編碼策略
+            encoding_strategies = [
+                # 策略1: 使用Big5相關編碼直接讀取
+                ('direct_chinese', [self.encoding, 'cp950', 'big5-hkscs']),
+                # 策略2: 使用latin1讀取後重新編碼 (處理編碼問題的常見方法)
+                ('latin1_recode', ['latin1']),
+                # 策略3: 其他編碼嘗試
+                ('fallback', ['utf-8', 'gb2312'])
+            ]
             
-            # 使用simpledbf讀取DBF檔案
-            dbf = simpledbf.Dbf5(str(file_path), codec=self.encoding)
+            for strategy_name, encodings in encoding_strategies:
+                logger.debug(f"嘗試策略: {strategy_name}")
+                
+                for encoding in encodings:
+                    try:
+                        logger.debug(f"  嘗試編碼: {encoding}")
+                        
+                        # 使用dbfread讀取
+                        with dbfread.DBF(str(file_path), encoding=encoding, ignore_missing_memofile=True) as dbf:
+                            # 轉換為字典列表
+                            records = []
+                            record_count = 0
+                            
+                            for record in dbf:
+                                # dbfread在某些版本中record是OrderedDict，沒有deleted屬性
+                                is_deleted = False
+                                if hasattr(record, 'deleted'):
+                                    is_deleted = record.deleted
+                                
+                                if not is_deleted:
+                                    record_dict = dict(record)
+                                    
+                                    # 如果是latin1策略，嘗試重新編碼中文字段
+                                    if strategy_name == 'latin1_recode':
+                                        record_dict = self._recode_chinese_fields(record_dict)
+                                    
+                                    records.append(record_dict)
+                                    record_count += 1
+                                    
+                                    # 限制讀取數量以避免記憶體問題
+                                    if record_count >= 50000:  # 最多讀取5萬筆
+                                        logger.warning(f"達到記錄數限制，停止讀取: {record_count}")
+                                        break
+                        
+                        if records:
+                            df = pd.DataFrame(records)
+                            logger.debug(f"dbfread 成功讀取 {len(df)} 筆記錄，策略: {strategy_name}, 編碼: {encoding}")
+                            return df
+                            
+                    except Exception as e:
+                        logger.debug(f"  編碼 {encoding} 失敗: {e}")
+                        continue
             
-            # 轉換為DataFrame
-            df = dbf.to_dataframe()
+            raise Exception("所有編碼策略都失敗")
             
-            # 清理欄位名稱 (轉為小寫)
-            df.columns = df.columns.str.lower()
-            
-            # 清理資料
-            df = self._clean_data(df, table_type)
-            
-            logger.info(f"成功解析 {table_type}: {len(df)} 筆記錄")
-            return df
-            
-        except UnicodeDecodeError as e:
-            raise DBFParseError(f"編碼錯誤 (嘗試使用 {self.encoding}): {e}")
         except Exception as e:
-            raise DBFParseError(f"解析DBF檔案失敗: {e}")
+            raise Exception(f"dbfread 解析失敗: {e}")
+    
+    def _recode_chinese_fields(self, record_dict: Dict[str, Any]) -> Dict[str, Any]:
+        """重新編碼中文字段（從latin1到big5）"""
+        try:
+            # 定義可能包含中文的字段
+            chinese_fields = ['mname', 'maddr', 'mremark', 'hdscp', 'hresult']
+            
+            for field_name, value in record_dict.items():
+                if (field_name.lower() in chinese_fields and 
+                    isinstance(value, str) and value.strip()):
+                    try:
+                        # 嘗試將latin1編碼的字符串重新編碼為big5
+                        bytes_data = value.encode('latin1')
+                        decoded_value = bytes_data.decode('big5', errors='ignore')
+                        if decoded_value.strip():  # 如果解碼成功且非空
+                            record_dict[field_name] = decoded_value
+                    except (UnicodeError, UnicodeDecodeError, UnicodeEncodeError):
+                        # 編碼轉換失敗，保持原值
+                        pass
+            
+            return record_dict
+            
+        except Exception as e:
+            logger.debug(f"重新編碼失敗: {e}")
+            return record_dict
+    
+    def _parse_with_simpledbf(self, file_path: Path) -> pd.DataFrame:
+        """使用simpledbf套件解析DBF檔案"""
+        try:
+            # 嘗試不同的編碼
+            encodings = [self.encoding, 'cp950', 'big5-hkscs', 'utf-8', 'latin1']
+            
+            for encoding in encodings:
+                try:
+                    logger.debug(f"simpledbf 嘗試編碼: {encoding}")
+                    
+                    dbf = simpledbf.Dbf5(str(file_path), codec=encoding)
+                    df = dbf.to_dataframe()
+                    
+                    if not df.empty:
+                        logger.debug(f"simpledbf 成功讀取 {len(df)} 筆記錄，編碼: {encoding}")
+                        return df
+                        
+                except Exception as e:
+                    logger.debug(f"simpledbf 編碼 {encoding} 失敗: {e}")
+                    continue
+            
+            raise Exception("所有編碼都失敗")
+            
+        except Exception as e:
+            raise Exception(f"simpledbf 解析失敗: {e}")
+    
+    def _detect_dbf_format(self, file_path: Path) -> Dict[str, Any]:
+        """
+        檢測DBF檔案格式和版本
+        
+        Args:
+            file_path: DBF檔案路徑
+            
+        Returns:
+            Dict: 檔案格式資訊
+        """
+        try:
+            format_info = {
+                'file_size': file_path.stat().st_size,
+                'dbf_version': None,
+                'encoding_detected': None,
+                'record_count': None,
+                'field_count': None
+            }
+            
+            # 讀取DBF檔案頭部
+            with open(file_path, 'rb') as f:
+                header = f.read(32)
+                
+                if len(header) >= 32:
+                    # DBF版本 (第一個位元組)
+                    version_byte = header[0]
+                    format_info['dbf_version'] = f"0x{version_byte:02X}"
+                    
+                    # 記錄數量 (位元組 4-7，小端序)
+                    record_count = int.from_bytes(header[4:8], byteorder='little')
+                    format_info['record_count'] = record_count
+                    
+                    # 頭部長度 (位元組 8-9)
+                    header_length = int.from_bytes(header[8:10], byteorder='little')
+                    
+                    # 記錄長度 (位元組 10-11)
+                    record_length = int.from_bytes(header[10:12], byteorder='little')
+                    
+                    # 估算欄位數
+                    if header_length > 32:
+                        field_count = (header_length - 32 - 1) // 32  # 每個欄位描述子32位元組
+                        format_info['field_count'] = field_count
+            
+            logger.debug(f"DBF格式資訊: {format_info}")
+            return format_info
+            
+        except Exception as e:
+            logger.warning(f"DBF格式檢測失敗: {e}")
+            return {'error': str(e)}
+    
+    def _detect_encoding(self, file_path: Path) -> str:
+        """
+        自動檢測DBF檔案編碼
+        
+        Args:
+            file_path: DBF檔案路徑
+            
+        Returns:
+            str: 最佳編碼
+        """
+        try:
+            # 嘗試讀取一小部分資料來檢測編碼
+            test_encodings = ['big5', 'cp950', 'big5-hkscs', 'gb2312', 'utf-8', 'latin1']
+            best_encoding = self.encoding  # 預設編碼
+            max_success_count = 0
+            
+            with open(file_path, 'rb') as f:
+                # 跳過頭部，讀取一些記錄資料
+                f.seek(32)
+                sample_data = f.read(1024)  # 讀取1KB樣本
+            
+            for encoding in test_encodings:
+                try:
+                    decoded = sample_data.decode(encoding)
+                    # 統計可顯示的中文字符數
+                    chinese_chars = sum(1 for char in decoded if '\u4e00' <= char <= '\u9fff')
+                    
+                    if chinese_chars > max_success_count:
+                        max_success_count = chinese_chars
+                        best_encoding = encoding
+                        
+                except UnicodeDecodeError:
+                    continue
+            
+            logger.debug(f"檢測到最佳編碼: {best_encoding} (中文字符數: {max_success_count})")
+            return best_encoding
+            
+        except Exception as e:
+            logger.warning(f"編碼檢測失敗，使用預設編碼 {self.encoding}: {e}")
+            return self.encoding
     
     def _clean_data(self, df: pd.DataFrame, table_type: str) -> pd.DataFrame:
         """
@@ -295,7 +510,7 @@ class ZhanWangDBFParser:
     
     def _standardize_date(self, series: pd.Series) -> pd.Series:
         """
-        標準化日期格式
+        標準化日期格式（支援民國年格式）
         
         Args:
             series: 日期欄位Series
@@ -309,7 +524,30 @@ class ZhanWangDBFParser:
             
             date_str = str(date_str).strip()
             
-            # 常見的展望日期格式
+            # 檢查是否為民國年格式（7位數字：YYYMMDD）
+            if re.match(r'^\d{7}$', date_str):
+                try:
+                    taiwan_year = int(date_str[:3])  # 前3位是民國年
+                    month = int(date_str[3:5])       # 第4-5位是月
+                    day = int(date_str[5:7])         # 第6-7位是日
+                    
+                    # 民國年轉西元年：民國年 + 1911
+                    western_year = taiwan_year + 1911
+                    
+                    # 驗證日期有效性
+                    if 1 <= month <= 12 and 1 <= day <= 31 and western_year >= 1912:
+                        try:
+                            # 使用datetime驗證日期
+                            from datetime import datetime
+                            datetime(western_year, month, day)
+                            return f"{western_year:04d}-{month:02d}-{day:02d}"
+                        except ValueError:
+                            # 日期無效（如2月30日）
+                            pass
+                except (ValueError, IndexError):
+                    pass
+            
+            # 常見的西元年日期格式
             formats = [
                 '%Y%m%d',     # 20250124
                 '%Y/%m/%d',   # 2025/01/24
@@ -328,8 +566,8 @@ class ZhanWangDBFParser:
             try:
                 return pd.to_datetime(date_str).strftime('%Y-%m-%d')
             except:
-                logger.warning(f"無法解析日期格式: {date_str}")
-                return date_str
+                logger.debug(f"無法解析日期格式: {date_str}")
+                return date_str  # 保留原值而不是None
         
         return series.apply(parse_date)
     

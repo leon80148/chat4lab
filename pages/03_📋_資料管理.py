@@ -226,19 +226,65 @@ def render_dbf_importer(components):
     </div>
     """, unsafe_allow_html=True)
     
-    # 檔案上傳
-    uploaded_files = st.file_uploader(
-        "選擇DBF檔案",
-        type=['dbf'],
-        accept_multiple_files=True,
-        help="可同時上傳多個DBF檔案"
+    # 匯入方式選擇
+    st.subheader("🎯 選擇匯入方式")
+    import_method = st.radio(
+        "",
+        ["🔗 檔案上傳", "📁 本地路徑"],
+        horizontal=True
     )
     
-    if uploaded_files:
-        st.write(f"已選擇 {len(uploaded_files)} 個檔案：")
+    if import_method == "🔗 檔案上傳":
+        # 檔案上傳方式
+        st.markdown("### 📤 拖拉上傳檔案")
+        uploaded_files = st.file_uploader(
+            "選擇DBF檔案",
+            type=['dbf'],
+            accept_multiple_files=True,
+            help="支援拖拉多個DBF檔案，或點擊瀏覽選擇檔案"
+        )
+    else:
+        # 本地路徑方式
+        st.markdown("### 📁 本地檔案路徑")
         
-        for uploaded_file in uploaded_files:
-            st.write(f"- {uploaded_file.name} ({uploaded_file.size:,} bytes)")
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            local_path = st.text_input(
+                "DBF檔案路徑",
+                placeholder="輸入完整檔案路徑，例如：/Users/username/data/CO01M.dbf",
+                help="支援絕對路徑和相對路徑"
+            )
+        with col2:
+            if st.button("🔍 瀏覽", help="在未來版本將支援檔案瀏覽器"):
+                st.info("檔案瀏覽器功能開發中...")
+        
+        # 檢查路徑是否存在
+        uploaded_files = None
+        if local_path:
+            if Path(local_path).exists() and local_path.endswith('.dbf'):
+                st.success(f"✅ 檔案存在：{Path(local_path).name}")
+                # 模擬上傳檔案格式
+                uploaded_files = [{'name': Path(local_path).name, 'path': local_path, 'is_local': True}]
+            elif local_path:
+                st.error("❌ 檔案不存在或非DBF格式")
+    
+    # 檔案處理
+    if import_method == "🔗 檔案上傳":
+        files_to_process = uploaded_files
+    else:
+        files_to_process = uploaded_files
+    
+    if files_to_process:
+        st.write(f"已選擇 {len(files_to_process)} 個檔案：")
+        
+        # 檔案資訊顯示
+        for file_item in files_to_process:
+            if import_method == "🔗 檔案上傳":
+                file_size = f"({file_item.size:,} bytes)" if hasattr(file_item, 'size') else ""
+                st.write(f"- {file_item.name} {file_size}")
+            else:
+                file_size = Path(file_item['path']).stat().st_size if Path(file_item['path']).exists() else 0
+                st.write(f"- {file_item['name']} ({file_size:,} bytes) 📁")
         
         # 匯入選項
         col1, col2 = st.columns(2)
@@ -262,19 +308,28 @@ def render_dbf_importer(components):
             )
         
         # 預覽檔案內容
-        if st.checkbox("預覽檔案內容"):
-            preview_file = st.selectbox(
-                "選擇要預覽的檔案：",
-                options=[f.name for f in uploaded_files]
-            )
-            
-            selected_file = next(f for f in uploaded_files if f.name == preview_file)
+        if st.checkbox("📋 預覽檔案結構", value=False):
+            if import_method == "🔗 檔案上傳":
+                preview_file = st.selectbox(
+                    "選擇要預覽的檔案：",
+                    options=[f.name for f in files_to_process]
+                )
+                selected_file = next(f for f in files_to_process if f.name == preview_file)
+            else:
+                preview_file = files_to_process[0]['name']
+                selected_file = files_to_process[0]
+                st.write(f"📄 預覽檔案：{preview_file}")
             
             try:
-                # 儲存暫存檔案
-                with tempfile.NamedTemporaryFile(delete=False, suffix='.dbf') as tmp_file:
-                    tmp_file.write(selected_file.getvalue())
-                    tmp_path = tmp_file.name
+                # 處理檔案路徑
+                if import_method == "🔗 檔案上傳":
+                    # 儲存暫存檔案
+                    with tempfile.NamedTemporaryFile(delete=False, suffix='.dbf') as tmp_file:
+                        tmp_file.write(selected_file.getvalue())
+                        tmp_path = tmp_file.name
+                else:
+                    # 使用本地檔案路徑
+                    tmp_path = selected_file['path']
                 
                 # 解析預覽
                 with st.spinner("解析檔案中..."):
@@ -300,23 +355,169 @@ def render_dbf_importer(components):
                     except Exception as e:
                         st.error(f"解析失敗：{e}")
                     finally:
-                        # 清理暫存檔案
-                        Path(tmp_path).unlink(missing_ok=True)
+                        # 清理暫存檔案（只在上傳檔案時）
+                        if import_method == "🔗 檔案上傳":
+                            Path(tmp_path).unlink(missing_ok=True)
             
             except Exception as e:
                 st.error(f"檔案處理失敗：{e}")
         
         # 匯入按鈕
         if st.button("🚀 開始匯入", type="primary"):
-            import_files(uploaded_files, db_manager, dbf_parser, import_mode[0], strict_mode)
+            import_files_enhanced(files_to_process, db_manager, dbf_parser, import_mode[0], strict_mode, import_method)
 
 
-def import_files(uploaded_files, db_manager, dbf_parser, import_mode, strict_mode):
-    """匯入檔案"""
+def import_files_enhanced(files_to_process, db_manager, dbf_parser, import_mode, strict_mode, import_method):
+    """增強版檔案匯入器"""
     
-    # 創建進度條
+    # 創建進度條和狀態顯示
+    st.markdown("### 📊 匯入進度")
     progress_bar = st.progress(0)
     status_text = st.empty()
+    
+    # 結果統計
+    results = {
+        'success': 0,
+        'failed': 0,
+        'total_records': 0,
+        'details': []
+    }
+    
+    try:
+        with st.spinner("🚀 智能匯入處理中..."):
+            for i, file_item in enumerate(files_to_process):
+                # 取得檔案資訊
+                if import_method == "🔗 檔案上傳":
+                    file_name = file_item.name
+                    status_text.text(f"📤 處理上傳檔案：{file_name}")
+                else:
+                    file_name = file_item['name']
+                    status_text.text(f"📁 處理本地檔案：{file_name}")
+                
+                try:
+                    # 處理檔案路徑
+                    if import_method == "🔗 檔案上傳":
+                        # 儲存暫存檔案
+                        with tempfile.NamedTemporaryFile(delete=False, suffix='.dbf') as tmp_file:
+                            tmp_file.write(file_item.getvalue())
+                            tmp_path = tmp_file.name
+                    else:
+                        # 使用本地檔案路徑
+                        tmp_path = file_item['path']
+                    
+                    # 解析檔案
+                    with st.spinner(f"🔍 解析 {file_name}..."):
+                        result = dbf_parser.parse_auto(tmp_path)
+                        
+                        table_type = result['table_type']
+                        df_data = pd.DataFrame(result['data'])
+                        record_count = len(df_data)
+                        
+                        # 嚴格模式檢查
+                        if strict_mode and not result['validation']['valid']:
+                            raise Exception(f"資料驗證失敗：{result['validation']['errors']}")
+                        
+                        # 匯入資料庫
+                        success = db_manager.import_dbf_data(
+                            table_type, 
+                            df_data, 
+                            if_exists=import_mode
+                        )
+                        
+                        if success:
+                            results['success'] += 1
+                            results['total_records'] += record_count
+                            results['details'].append({
+                                'file': file_name,
+                                'table': table_type,
+                                'records': record_count,
+                                'status': '✅ 成功',
+                                'method': '📤 上傳' if import_method == "🔗 檔案上傳" else '📁 本地'
+                            })
+                            st.success(f"✅ {file_name} 匯入成功（{record_count:,} 筆）")
+                        else:
+                            results['failed'] += 1
+                            results['details'].append({
+                                'file': file_name,
+                                'table': table_type,
+                                'records': 0,
+                                'status': '❌ 失敗',
+                                'method': '📤 上傳' if import_method == "🔗 檔案上傳" else '📁 本地'
+                            })
+                            st.error(f"❌ {file_name} 匯入失敗")
+                
+                except Exception as e:
+                    results['failed'] += 1
+                    results['details'].append({
+                        'file': file_name,
+                        'table': 'N/A',
+                        'records': 0,
+                        'status': f'💥 錯誤：{str(e)}',
+                        'method': '📤 上傳' if import_method == "🔗 檔案上傳" else '📁 本地'
+                    })
+                    st.error(f"❌ {file_name} 處理失敗：{e}")
+                
+                finally:
+                    # 清理暫存檔案（只在上傳檔案時）
+                    if import_method == "🔗 檔案上傳" and 'tmp_path' in locals():
+                        Path(tmp_path).unlink(missing_ok=True)
+                
+                # 更新進度
+                progress = (i + 1) / len(files_to_process)
+                progress_bar.progress(progress)
+            
+            # 顯示匯入摘要
+            status_text.text("🎉 匯入完成")
+            
+            st.markdown("### 📊 匯入摘要")
+            
+            # 統計卡片
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                st.markdown(f"""
+                <div class="stats-card" style="background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);">
+                    <h4>成功匯入</h4>
+                    <h2>{results['success']}</h2>
+                    <p>個檔案</p>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            with col2:
+                st.markdown(f"""
+                <div class="stats-card" style="background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%);">
+                    <h4>匯入失敗</h4>
+                    <h2>{results['failed']}</h2>
+                    <p>個檔案</p>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            with col3:
+                st.markdown(f"""
+                <div class="stats-card" style="background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);">
+                    <h4>總記錄數</h4>
+                    <h2>{results['total_records']:,}</h2>
+                    <p>筆資料</p>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            # 詳細結果表格
+            if results['details']:
+                st.markdown("### 📋 詳細結果")
+                df_results = pd.DataFrame(results['details'])
+                st.dataframe(df_results, use_container_width=True, hide_index=True)
+                
+                # 下載結果報告
+                csv_report = df_results.to_csv(index=False).encode('utf-8-sig')
+                st.download_button(
+                    label="📥 下載匯入報告",
+                    data=csv_report,
+                    file_name=f"import_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                    mime="text/csv"
+                )
+    
+    except Exception as e:
+        st.error(f"💥 匯入過程發生錯誤：{e}")
     
     results = {
         'success': 0,

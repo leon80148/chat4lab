@@ -283,8 +283,39 @@ class ConfigManager:
         self._set_nested_config(keys, str(value))
     
     def get_database_config(self) -> Dict[str, Any]:
-        """取得資料庫配置"""
-        return self.get('database', {})
+        """
+        取得資料庫配置
+        
+        將嵌套的performance配置展平到根層級，以確保DatabaseManager能正確存取配置項目。
+        
+        Returns:
+            展平後的資料庫配置字典
+        """
+        db_config = self.get('database', {}).copy()
+        
+        # 將performance配置展平到根層級
+        if 'performance' in db_config:
+            performance_config = db_config.pop('performance')
+            if isinstance(performance_config, dict):
+                # 將performance下的配置項目提升到根層級
+                db_config.update(performance_config)
+        
+        # 確保必要的配置項目存在，使用預設值
+        default_performance = {
+            'journal_mode': 'WAL',
+            'synchronous': 'NORMAL', 
+            'cache_size': 10000,
+            'temp_store': 'MEMORY',
+            'mmap_size': 268435456,
+            'foreign_keys': True,
+            'busy_timeout': 30000
+        }
+        
+        for key, default_value in default_performance.items():
+            if key not in db_config:
+                db_config[key] = default_value
+        
+        return db_config
     
     def get_llm_config(self) -> Dict[str, Any]:
         """取得LLM配置"""

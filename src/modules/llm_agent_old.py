@@ -1,18 +1,11 @@
 """
-診所AI查詢系統 - LLM查詢代理 (現代化版本)
+診所AI查詢系統 - LLM查詢代理
 
 負責處理自然語言查詢，將中文查詢轉換為安全的SQL語句，
 並提供醫療專業術語的智能解析。
 
-現已升級為現代化架構，支援：
-- 結構化輸出和多層級SQL提取
-- AST安全驗證和智能重試機制  
-- Gemma3優化提示詞工程
-- 增強錯誤處理和診斷
-
 Author: Leon Lu
 Created: 2025-01-24
-Updated: 2025-01-25 (v2.0 現代化升級)
 """
 
 import logging
@@ -534,23 +527,3 @@ class QueryValidator:
             return False, "只允許SELECT查詢操作"
         
         return True, ""
-
-
-# ============================================================================
-# 現代化架構集成 (v2.0)
-# ============================================================================
-
-# 導入新的現代化組件
-try:
-    from .llm_agent_v2 import ModernLLMQueryAgent
-    from .sql_models import EnhancedQueryResult
-    
-    # 使用現代化Agent作為主要實現
-    LLMQueryAgent = ModernLLMQueryAgent
-    QueryResult = EnhancedQueryResult
-    
-    logger.info("已載入現代化LLM Agent架構 v2.0")
-    
-except ImportError as e:
-    logger.warning(f"無法載入現代化架構，使用舊版本: {e}")
-    # 保持向下相容，使用原有的LLMQueryAgent類別
